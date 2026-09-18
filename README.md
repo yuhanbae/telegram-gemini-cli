@@ -132,7 +132,7 @@ so it points to this page instead.
 
 [MIT](LICENSE)
 
-## tegegm shortcut (Termux)
+## tegem shortcut (Termux)
 
 For convenience on Termux, a `tegem` launcher lives at
 `/data/data/com.termux/files/usr/bin/tegem` (a copy is kept in `bin/tegem`).
@@ -145,7 +145,7 @@ It:
 
 ```
 tegem                      # start (asks for token on first run)
-nohup tegegm > ~/telegram-gemini-cli/logs/bot.log 2>&1 &   # background
+nohup tegem > ~/telegram-gemini-cli/logs/bot.log 2>&1 &   # background
 ```
 
 To reinstall the shortcut after cloning elsewhere:
