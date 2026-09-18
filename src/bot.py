@@ -1,4 +1,17 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+"""Telegram bot that bridges messages to the local Gemini CLI.
+
+Per-chat session state lives in ``context.chat_data``:
+
+    {"gemini_session": "<uuid>"}
+
+The UUID is created on /new or lazily on the first plain message, then
+reused for every subsequent message in that chat so Gemini CLI keeps
+multi-turn context via --session-id.
+"""
+
+import logging
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
 from telegram.ext import (
     Application,
@@ -8,121 +21,184 @@ from telegram.ext import (
     filters,
 )
 
-from .config import TELEGRAM_BOT_TOKEN
-from .gemini_cli import ask_gemini, list_sessions
+from . import gemini_cli
+from .config import (
+    ALLOWED_USER_IDS,
+    GEMINI_COMMAND,
+    GEMINI_MODEL,
+    GEMINI_TIMEOUT,
+    require_token,
+)
+
+logger = logging.getLogger(__name__)
+
+CHUNK_SIZE = 4000  # below Telegram's 4096-char message limit
 
 DONATE_URL = (
     "https://www.paypal.com/donate/"
     "?business=yuhanbae%40gmail.com&currency_code=USD"
 )
 
+SESSION_KEY = "gemini_session"
 
-def donate_keyboard():
+
+def donate_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [[
-            InlineKeyboardButton(
-                "☕ Donate / Buy Me a Coffee",
-                url=DONATE_URL,
-            )
+            InlineKeyboardButton("☕ Donate / Buy Me a Coffee", url=DONATE_URL),
         ]]
     )
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def send_chunked(message, text: str) -> None:
+    text = (text or "").strip() or "(empty response)"
+    for i in range(0, len(text), CHUNK_SIZE):
+        await message.reply_text(text[i : i + CHUNK_SIZE])
+
+
+def _allowed(update: Update) -> bool:
+    if not ALLOWED_USER_IDS:
+        return True
+    user_id = str(update.effective_user.id)
+    return user_id in ALLOWED_USER_IDS
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _allowed(update):
+        logger.warning("Rejected /start from user %s", update.effective_user.id)
+        return
     await update.message.reply_text(
-        "🤖 *Telegram Gemini CLI*\n\n"
-        "Send a message to Gemini CLI.\n\n"
-        "Commands:\n"
-        "/new — start a new Gemini session\n"
-        "/resume — resume the current session\n"
-        "/sessions — list Gemini sessions\n"
-        "/status — wrapper status\n"
-        "/donate — support development ☕",
-        parse_mode="Markdown",
+        "🤖 *Telegram → Gemini CLI bridge*\n\n"
+        "Send me a message and I will pass it to your local Gemini CLI.\n\n"
+        "*Commands*\n"
+        "/new — start a fresh session for this chat\n"
+        "/resume <uuid|index> — switch to an existing Gemini CLI session\n"
+        "/sessions — list sessions saved for this project directory\n"
+        "/status — show wrapper + session state\n"
+        "/donate — support the project ☕\n\n"
+        "Plain text messages are answered by Gemini CLI in your "
+        "current working directory.",
         reply_markup=donate_keyboard(),
     )
 
 
-async def donate(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def donate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _allowed(update):
+        return
     await update.message.reply_text(
-        "☕ Support development with PayPal:",
+        "Thanks for your support! ☕",
         reply_markup=donate_keyboard(),
     )
 
 
-async def new(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.chat_data.pop("gemini_session", None)
+async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _allowed(update):
+        return
+    session = context.chat_data.get(SESSION_KEY)
+    model = GEMINI_MODEL or "default"
+    lines = [
+        "🟢 *Status*",
+        f"• Gemini CLI: `{GEMINI_COMMAND}`",
+        f"• Model: {model}",
+        f"• Timeout: {GEMINI_TIMEOUT}s",
+        f"• This chat's session: `{session}`" if session else
+        "• This chat's session: none yet (fresh start)",
+    ]
+    await update.message.reply_text("\n".join(lines))
+
+
+async def new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _allowed(update):
+        return
+    session = gemini_cli.new_session_id()
+    context.chat_data[SESSION_KEY] = session
     await update.message.reply_text(
-        "🆕 Session mapping cleared.\n"
-        "The next message will start a fresh Gemini session."
+        f"🆕 Fresh session started.\n"
+        f"Session ID: `{session}`\n"
+        "Your next message will open a new Gemini CLI session "
+        "with that ID.",
     )
 
 
-async def resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    session = context.chat_data.get("gemini_session")
+async def resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _allowed(update):
+        return
+    arg = " ".join(context.args).strip() if context.args else ""
+    session = arg or context.chat_data.get(SESSION_KEY)
 
     if not session:
         await update.message.reply_text(
-            "No session is mapped to this Telegram chat yet."
+            "No session to resume in this chat yet.\n"
+            "Use /new first, or /resume <uuid|index> with a session "
+            "shown by /sessions.\n"
+            "(Gemini CLI also accepts `latest` — note it refers to the "
+            "most recent session of *this project directory*, not of "
+            "this chat.)",
         )
         return
 
+    context.chat_data[SESSION_KEY] = session
     await update.message.reply_text(
-        f"🔄 Gemini session configured:\n`{session}`",
-        parse_mode="Markdown",
+        f"🔄 This chat now maps to session `{session}`.\n"
+        "The next message will be resumed with --resume.",
     )
 
 
-async def sessions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def sessions(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _allowed(update):
+        return
     try:
-        output = await list_sessions()
-    except Exception as exc:
+        output = await gemini_cli.list_sessions()
+    except RuntimeError as exc:
         await update.message.reply_text(f"❌ {exc}")
         return
-
-    await send_chunks(update, output)
-
-
-async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    session = context.chat_data.get("gemini_session")
-
-    await update.message.reply_text(
-        "🟢 Telegram wrapper online\n"
-        f"Gemini session: {session or 'new / not mapped'}"
-    )
+    await send_chunked(update.message, output)
 
 
-async def send_chunks(update: Update, text: str):
-    for i in range(0, len(text), 4000):
-        await update.message.reply_text(text[i:i + 4000])
+async def message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _allowed(update):
+        logger.warning("Rejected message from user %s", update.effective_user.id)
+        return
 
-
-async def message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = (update.message.text or "").strip()
-
     if not prompt:
         return
 
-    await update.message.chat.send_action(ChatAction.TYPING)
+    session = context.chat_data.get(SESSION_KEY)
+    if not session:
+        # First message of the chat: lazily create a UUID so multi-turn
+        # context works for all following messages.
+        session = gemini_cli.new_session_id()
+        context.chat_data[SESSION_KEY] = session
 
-    session = context.chat_data.get("gemini_session")
+    await update.message.chat.send_action(ChatAction.TYPING)
+    logger.info("chat=%s session=%s prompt=%r",
+                update.chat.id, session, prompt[:80])
 
     try:
-        answer = await ask_gemini(prompt, session=session)
-
-    except Exception as exc:
+        answer = await gemini_cli.ask_gemini(
+            prompt, session_id=session, resume=True,
+        )
+    except RuntimeError as exc:
+        logger.error("gemini run failed: %s", exc)
+        await update.message.reply_text(f"❌ {exc}")
+        return
+    except Exception:
+        logger.exception("unexpected error while running Gemini CLI")
         await update.message.reply_text(
-            f"❌ Gemini CLI error:\n{exc}"
+            "❌ Unexpected internal error. Check the bot logs."
         )
         return
 
-    await send_chunks(update, answer)
+    await send_chunked(update.message, answer)
 
 
 def build_app() -> Application:
-    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    token = require_token()
+    app = Application.builder().token(token).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", start))
     app.add_handler(CommandHandler("donate", donate))
     app.add_handler(CommandHandler("new", new))
     app.add_handler(CommandHandler("resume", resume))
@@ -133,7 +209,6 @@ def build_app() -> Application:
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
             message,
-        )
+        ),
     )
-
     return app

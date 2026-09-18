@@ -1,108 +1,121 @@
 # Telegram Gemini CLI
 
-A lightweight Telegram wrapper for the local Gemini CLI.
+A lightweight, Termux-friendly Telegram wrapper around the **local [Gemini CLI](https://geminicli.com)**.
+Send a message in Telegram and it is passed to `gemini` on your device;
+the answer is sent back, chunked to fit Telegram's limits.
 
-## Features
+[![Donate](https://img.shields.io/badge/Donate-PayPal-green)](https://www.paypal.com/donate/?business=yuhanbae%40gmail.com&currency_code=USD)
 
-- Telegram → Gemini CLI bridge
-- Non-interactive Gemini CLI execution
-- `/start`
-- `/status`
-- `/new`
-- `/donate`
-- Telegram 4096-character response splitting
-- Environment-based secrets
-- Termux-friendly
-- PayPal donation support
+## Architecture
 
-## Requirements
+```
+Telegram Bot API
+      │  (long polling)
+      ▼
+Python bot (python-telegram-bot)
+      │  async subprocess, per-chat session UUID
+      ▼
+local Gemini CLI (gemini -p … non-interactive)
+      │
+      ▼
+Gemini API → stdout → chunked reply in Telegram
+```
+
+No database, no extra services: per-chat session state is kept in
+`chat_data` (in-memory, keyed by Telegram chat id) and maps to a
+UUID used with the CLI's `--session-id` / `--resume` flags.
+
+## Prerequisites
 
 - Python 3.10+
-- Telegram Bot Token
-- Gemini CLI installed and authenticated
+- [Gemini CLI](https://geminicli.com/docs/installation/) installed and
+  authenticated (`gemini` on PATH, e.g. via `npm i -g @google/gemini-cli`)
+- A Telegram bot token from [@BotFather](https://t.me/BotFather)
 
-## Setup
+> **Termux note:** headless runs outside a trusted directory need
+> `--skip-trust`. The easiest way is setting `GEMINI_EXTRA_ARGS=--skip-trust`
+> in `.env` (supported by this wrapper).
+
+## Installation
 
 ```bash
-python -m venv .venv
+git clone https://github.com/yuhanbae/telegram-gemini-cli
+cd telegram-gemini-cli
+
+python3 -m venv .venv          # optional, works fine without on Termux
 source .venv/bin/activate
 pip install -r requirements.txt
 
 cp .env.example .env
 nano .env
+```
+
+## Configuration (.env)
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `TELEGRAM_BOT_TOKEN` | — (required) | Bot token from @BotFather |
+| `GEMINI_COMMAND` | `gemini` | Command used to launch Gemini CLI |
+| `GEMINI_MODEL` | *(empty = CLI default)* | e.g. `gemini-2.5-flash` |
+| `GEMINI_TIMEOUT` | `300` | Seconds before a Gemini call is killed |
+| `GEMINI_EXTRA_ARGS` | *(empty)* | Extra CLI args, e.g. `--skip-trust` |
+| `TELEGRAM_ALLOWED_USER_IDS` | *(empty = everyone)* | Comma-separated user ids; others are ignored |
+
+Never commit `.env` — it is git-ignored.
+
+## Running
+
+Linux / Termux:
+
+```bash
 cd ~/telegram-gemini-cli
+python3 -m src.main            # starts long polling
+```
 
-cat > src/gemini_cli.py <<'EOF'
-import asyncio
-import os
-import re
+Run it persistently on Termux:
 
-from .config import GEMINI_COMMAND, GEMINI_MODEL, GEMINI_TIMEOUT
+```bash
+python3 -m src.main &
+# or: nohup python3 -m src.main > gemini-bot.log 2>&1 &
+```
 
+## Telegram commands
 
-async def run_gemini(*args: str) -> tuple[str, str]:
-    cmd = [GEMINI_COMMAND, *args]
+| Command | Effect |
+|---|---|
+| `/start`, `/help` | Usage + donate button |
+| `/new` | Creates a fresh session UUID for this chat |
+| `/resume [uuid\|index]` | Map this chat to an existing Gemini CLI session (`latest` works too, but note it refers to the newest session of *this project directory*, shared across chats) |
+| `/sessions` | Lists sessions saved for the project directory the bot runs in |
+| `/status` | Shows CLI, model, timeout and this chat's session |
+| `/donate` | PayPal donation button |
 
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        cwd=os.getcwd(),
-    )
+Any other text message is sent to Gemini CLI with that chat's session,
+giving you multi-turn context per chat.
 
-    try:
-        stdout, stderr = await asyncio.wait_for(
-            proc.communicate(),
-            timeout=GEMINI_TIMEOUT,
-        )
-    except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
-        raise RuntimeError("Gemini CLI timed out")
+## Donations
 
-    out = stdout.decode("utf-8", errors="replace").strip()
-    err = stderr.decode("utf-8", errors="replace").strip()
+If this project helps you, consider a donation:
 
-    if proc.returncode != 0:
-        raise RuntimeError(err or out or f"Gemini exited with {proc.returncode}")
+[![Donate on PayPal](https://img.shields.io/badge/Donate-PayPal-blue)](https://www.paypal.com/donate/?business=yuhanbae%40gmail.com&currency_code=USD)
 
-    return out, err
+## Troubleshooting
 
+- **"Gemini CLI is not running in a trusted directory"** — set
+  `GEMINI_EXTRA_ARGS=--skip-trust` in `.env` (or set
+  `GEMINI_CLI_TRUST_WORKSPACE=true` in the environment).
+- **node-pty MODULE_NOT_FOUND warnings** on Termux — harmless; they are
+  filtered out of error messages automatically.
+- **Daily quota exhausted** — the free Gemini CLI tier has a daily
+  limit; the CLI reports `TerminalQuotaError`. Wait for the next day or
+  use a paid API key / different model.
+- **`/sessions` shows sessions of the wrong project** — Gemini CLI stores
+  sessions per project directory; the bot always runs the CLI in its own
+  working directory (`~/telegram-gemini-cli`).
+- **Bot does not reply** — check `TELEGRAM_BOT_TOKEN`, that the process
+  is running (`python3 -m src.main`), and that your user id is in
+  `TELEGRAM_ALLOWED_USER_IDS` if that variable is set.
 
-def base_args() -> list[str]:
-    args = []
+## License
 
-    if GEMINI_MODEL:
-        args += ["--model", GEMINI_MODEL]
-
-    return args
-
-
-async def ask_gemini(prompt: str, session: str | None = None) -> str:
-    args = base_args()
-
-    if session:
-        args += ["--resume", session]
-
-    args += ["--prompt", prompt]
-
-    output, _ = await run_gemini(*args)
-    return output or "(Gemini returned an empty response)"
-
-
-async def list_sessions() -> str:
-    output, _ = await run_gemini(*base_args(), "--list-sessions")
-    return output or "No Gemini sessions found."
-
-
-async def delete_session(session_id: str) -> str:
-    if not re.fullmatch(r"[A-Za-z0-9_-]+", session_id):
-        raise ValueError("Invalid session identifier")
-
-    output, _ = await run_gemini(
-        *base_args(),
-        "--delete-session",
-        session_id,
-    )
-
-    return output or f"Session {session_id} deleted."
+[MIT](LICENSE)
