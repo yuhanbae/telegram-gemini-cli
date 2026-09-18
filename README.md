@@ -99,6 +99,14 @@ If this project helps you, consider a donation:
 
 [![Donate on PayPal](https://img.shields.io/badge/Donate-PayPal-blue)](https://www.paypal.com/donate/?business=yuhanbae%40gmail.com&currency_code=USD)
 
+⚡ **Speed Wallet (Lightning):** the bot's /donate and /start menus include a
+Pay-with-Speed-Wallet button using a Lightning invoice (lnbc...). Open it in
+any Lightning wallet app that supports the `lightning:` URI scheme.
+
+Note: `.github/FUNDING.yml` only supports a fixed set of platforms (PayPal is
+there as a custom URL) — Lightning invoices can't be added there, so they live
+in the bot UI + this section.
+
 ## Troubleshooting
 
 - **"Gemini CLI is not running in a trusted directory"** — set
