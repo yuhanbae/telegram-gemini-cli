@@ -119,3 +119,26 @@ If this project helps you, consider a donation:
 ## License
 
 [MIT](LICENSE)
+
+## tegegm shortcut (Termux)
+
+For convenience on Termux, a `tegem` launcher lives at
+`/data/data/com.termux/files/usr/bin/tegem` (a copy is kept in `bin/tegem`).
+It:
+
+- on first run, asks for the bot token (hidden) and optionally your user id(s),
+  verifies the token via `getMe`, and saves everything to `.env` (chmod 600)
+- refuses to start a second instance (flock) to avoid Telegram 409 Conflict
+- then starts the bot in the foreground
+
+```
+tegem                      # start (asks for token on first run)
+nohup tegegm > ~/telegram-gemini-cli/logs/bot.log 2>&1 &   # background
+```
+
+To reinstall the shortcut after cloning elsewhere:
+
+```
+cp bin/tegem /data/data/com.termux/files/usr/bin/tegem
+chmod +x /data/data/com.termux/files/usr/bin/tegem
+```
