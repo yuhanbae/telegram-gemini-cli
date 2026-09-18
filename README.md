@@ -135,7 +135,7 @@ so it points to this page instead.
 ## tegem shortcut (Termux)
 
 For convenience on Termux, a `tegem` launcher lives at
-`/data/data/com.termux/files/usr/bin/tegem` (a copy is kept in `bin/tegem`).
+`/data/data/com.termux/files/usr/bin/tegem` (a copy is kept in `bin/tegem.template`).
 It:
 
 - on first run, asks for the bot token (hidden) and optionally your user id(s),
@@ -151,6 +151,33 @@ nohup tegem > ~/telegram-gemini-cli/logs/bot.log 2>&1 &   # background
 To reinstall the shortcut after cloning elsewhere:
 
 ```
-cp bin/tegem /data/data/com.termux/files/usr/bin/tegem
+cp bin/tegem.template /data/data/com.termux/files/usr/bin/tegem
 chmod +x /data/data/com.termux/files/usr/bin/tegem
+# or simply: bash bin/install_tegem.sh
 ```
+
+## Uninstall / Removal
+
+Stop and remove everything this project installed, in order:
+
+```
+# 1. Stop any running bot instance (the flock guard message shows the PID)
+pkill -f 'usr/bin/tegem'   # or: kill <pid-from-lock-file>
+
+# 2. Remove the tegegm launcher + its lock/pid files
+rm -f /data/data/com.termux/files/usr/bin/tegem
+rm -f /data/data/com.termux/files/usr/tmp/tegem.lock \
+      /data/data/com.termux/files/usr/tmp/tegem.pid
+
+# 3. Delete the repo (includes .env with your bot token)
+rm -rf ~/telegram-gemini-cli
+```
+
+If you want to keep the ability to reinstall later, skip step 3 and
+just do steps 1–2 — the repo + `.env` stay intact, so a future
+`bash bin/install_tegem.sh` + `tegem` brings it back up.
+
+**Note:** removing the bot from your phone does NOT revoke the bot
+token. To fully deactivate it, go to @BotFather → `/revoke` (or
+drerevoke / delete the bot). Otherwise anyone who still has the
+token can operate the bot even after you uninstall.
