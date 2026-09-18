@@ -106,7 +106,8 @@ def test_subprocess_mock(tmp_path=None):
 
 def test_bot_builds():
     app = build_app()
-    assert len(app.handlers[0]) == 8  # 7 commands + text handler
+    # 7 command handlers + text handler + callback handler
+    assert len(app.handlers[0]) == 9
 
 
 if __name__ == "__main__":

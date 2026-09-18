@@ -15,6 +15,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     MessageHandler,
@@ -51,13 +52,28 @@ def donate_keyboard() -> InlineKeyboardMarkup:
         [[
             InlineKeyboardButton(
                 "⚡ Buy Me a Coffee (Speed Wallet)",
-                url=SPEED_WALLET_INVOICE,
+                callback_data="donate_speed_wallet",
             ),
             InlineKeyboardButton(
                 "☕ PayPal.Me / Buy Me a Coffee",
                 url=PAYPAL_ME_URL,
             ),
         ]]
+    )
+
+
+async def donate_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Speed Wallet button.
+
+    Telegram rejects non-http(s) URLs in inline keyboard buttons, so the
+    lightning: invoice is sent as a plain-text message instead. Telegram
+    auto-detects the URI and offers the Speed Wallet deep link when tapped.
+    """
+    query = update.callback_query
+    await query.answer()
+    await query.message.reply_text(
+        "⚡ Speed Wallet invoice (tap to open in your Lightning wallet):\n"
+        f"{SPEED_WALLET_INVOICE}"
     )
 
 
@@ -186,7 +202,7 @@ async def message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     await update.message.chat.send_action(ChatAction.TYPING)
     logger.info("chat=%s session=%s prompt=%r",
-                update.chat.id, session, prompt[:80])
+                update.effective_chat.id, session, prompt[:80])
 
     try:
         answer = await gemini_cli.ask_gemini(
@@ -213,6 +229,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", start))
     app.add_handler(CommandHandler("donate", donate))
+    app.add_handler(CallbackQueryHandler(donate_callback, pattern="^donate_speed_wallet$"))
     app.add_handler(CommandHandler("new", new))
     app.add_handler(CommandHandler("resume", resume))
     app.add_handler(CommandHandler("sessions", sessions))
