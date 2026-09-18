@@ -30,6 +30,7 @@ from .config import (
     GEMINI_TIMEOUT,
     require_token,
 )
+from .menu import post_init_reset_menu
 
 logger = logging.getLogger(__name__)
 
@@ -224,7 +225,12 @@ async def message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 def build_app() -> Application:
     token = require_token()
-    app = Application.builder().token(token).build()
+    app = (
+        Application.builder()
+        .token(token)
+        .post_init(post_init_reset_menu)
+        .build()
+    )
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", start))
