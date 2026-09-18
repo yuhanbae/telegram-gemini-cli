@@ -38,15 +38,10 @@ SPEED_WALLET_INVOICE = (
     "lightning:lnbc1p426acmpp5ga2jqrl7glrl3s9s680r3t2lucnc8zrgnpzy200hxpp7hrsa99"
     "pqdqqcqzzsxqyz5vqsp5h34eyqhnsemqjwlrqv86j9x7mst2jm0vjnmqwgpxgtya3ntaumqs9qxpqysgqpxuc"
     "wqklhnjpgv3rlrf59z35w7jrpqvhkdcksa40qad9nuedc2hhpxtyvay08atw00ujv7ehqf7ee2r57wulqwlzrfj038rl2h8nd8gp4l0q3y"
-)
-
-# Speed Wallet (Lightning) invoice — static, provided by the project owner.
-SPEED_WALLET_INVOICE = (
-    "lightning:lnbc1p426acmpp5ga2jqrl7glrl3s9s680r3t2lucnc8zrgnpzy200hxpp7hrsa99"
-    "pqdqqcqzzsxqyz5vqsp5h34eyqhnsemqjwlrqv86j9x7mst2jm0vjnmqwgpxgtya3ntaumqs9qxpqysgqpxuc"
-    "wqklhnjpgv3rlrf59z35w7jrpqvhkdcksa40qad9nuedc2hhpxtyvay08atw00ujv7ehqf7ee2r57wulqwlzrfj038rl2h8nd8gp4l0q3y"
     "?label=Buy%20Me%20a%20Coffee%20(tegem)"
 )
+
+PAYPAL_ME_URL = "https://www.paypal.com/paypalme/yuhanbae"
 
 SESSION_KEY = "gemini_session"
 
@@ -57,6 +52,10 @@ def donate_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(
                 "⚡ Buy Me a Coffee (Speed Wallet)",
                 url=SPEED_WALLET_INVOICE,
+            ),
+            InlineKeyboardButton(
+                "☕ PayPal.Me / Buy Me a Coffee",
+                url=PAYPAL_ME_URL,
             ),
         ]]
     )

@@ -89,25 +89,27 @@ python3 -m src.main &
 | `/resume [uuid\|index]` | Map this chat to an existing Gemini CLI session (`latest` works too, but note it refers to the newest session of *this project directory*, shared across chats) |
 | `/sessions` | Lists sessions saved for the project directory the bot runs in |
 | `/status` | Shows CLI, model, timeout and this chat's session |
-| `/donate` | PayPal donation button |
+| `/donate` | Speed Wallet + PayPal.Me donation buttons |
 
 Any other text message is sent to Gemini CLI with that chat's session,
 giving you multi-turn context per chat.
 
 ## Donations
 
-☕ **Buy Me a Coffee — Speed Wallet (Lightning):**
+☕ **Buy Me a Coffee — Speed Wallet (Lightning) / PayPal.Me:**
 
-The bot's `/donate`, `/start` and `/help` menus show a
-**⚡ Buy Me a Coffee (Speed Wallet)** button — a static Lightning invoice
-(`lightning:lnbc...`). Open it in any Lightning wallet app (Speed Wallet,
-Phoenix, Alby, Bitcoin Core …) by tapping the button in Telegram.
+The bot's `/donate`, `/start` and `/help` menus show two buttons:
 
-(We previously linked PayPal, but PayPal does not support donations in this
-region, so the Speed Wallet invoice is the primary donation route.)
+- **⚡ Buy Me a Coffee (Speed Wallet)** — a static Lightning invoice
+  (`lightning:lnbc...`). Open it in any Lightning wallet app
+  (Speed Wallet, Phoenix, Alby, Bitcoin Core …) by tapping it in Telegram.
+- **☕ PayPal.Me** — a direct [paypal.me/yuhanbae](https://www.paypal.com/paypalme/yuhanbae)
+  link (works where PayPal Me is available).
 
-Note: `.github/FUNDING.yml` only supports a fixed set of platforms and cannot
-carry a `lightning:` URI, so it points to this page instead.
+Note: the old PayPal *donation* (`paypal.com/donate`) button was removed
+because PayPal does not support donations in this region; PayPal.Me is kept
+as a secondary route. `.github/FUNDING.yml` cannot carry `lightning:` URIs,
+so it points to this page instead.
 
 ## Troubleshooting
 
