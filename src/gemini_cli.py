@@ -116,6 +116,34 @@ async def ask_gemini(
     return out or "(Gemini CLI returned an empty response.)"
 
 
+async def ask_gemini_safe(
+    prompt: str,
+    session_id: str | None = None,
+) -> tuple[str, str | None]:
+    """Ask Gemini, auto-falling back to a fresh session when a resume fails.
+
+    Returns ``(answer, effective_session_id)``.
+
+    The Gemini CLI rejects a ``--resume <uuid>`` when no session with that
+    UUID exists for the *current project directory* (e.g. the session was
+    created under a different directory, deleted, or this is the chat's
+    first message and the UUID was just generated). In that case we retry
+    once with ``--session-id <uuid>`` which *creates* the session, so the
+    chat keeps a stable multi-turn identity afterwards.
+    """
+    if session_id:
+        try:
+            return await ask_gemini(prompt, session_id=session_id, resume=True), session_id
+        except RuntimeError as exc:
+            if "No previous sessions" not in str(exc):
+                raise
+            logger.info(
+                "Resume of %s failed (not in this project dir); "
+                "creating it with --session-id instead.", session_id,
+            )
+    return await ask_gemini(prompt, session_id=session_id), session_id
+
+
 async def list_sessions() -> str:
     out, _err = await _run(*_base_args(), "--list-sessions")
     return out or "No Gemini sessions found for this project."

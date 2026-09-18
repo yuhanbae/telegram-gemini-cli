@@ -206,9 +206,11 @@ async def message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 update.effective_chat.id, session, prompt[:80])
 
     try:
-        answer = await gemini_cli.ask_gemini(
-            prompt, session_id=session, resume=True,
+        answer, session = await gemini_cli.ask_gemini_safe(
+            prompt, session_id=session,
         )
+        # The session may have been (re)created; keep chat_data in sync.
+        context.chat_data[SESSION_KEY] = session
     except RuntimeError as exc:
         logger.error("gemini run failed: %s", exc)
         await update.message.reply_text(f"❌ {exc}")

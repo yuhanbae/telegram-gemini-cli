@@ -1,0 +1,194 @@
+#!/data/data/com.termux/files/usr/bin/python3
+# "tegem" — run the Telegram Gemini CLI bot in the foreground.
+# On first run (no .env / no token), interactively asks for the bot token
+# and optionally the allowed user id(s), then saves them to .env so
+# subsequent runs are silent.
+import getpass
+import os
+import sys
+
+REPO = os.path.expanduser("~/telegram-gemini-cli")
+ENV_FILE = os.path.join(REPO, ".env")
+TEMPLATE = os.path.join(REPO, ".env.example")
+
+
+def load_env() -> None:
+    if os.path.exists(ENV_FILE):
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(ENV_FILE)
+        except ImportError:
+            # fall back to a minimal parser
+            try:
+                with open(ENV_FILE) as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line or line.startswith("#") or "=" not in line:
+                            continue
+                        key, _, val = line.partition("=")
+                        os.environ.setdefault(key.strip(), val.strip())
+            except OSError:
+                pass
+
+
+def ask_bool(prompt: str, default: bool = False) -> bool:
+    hint = "Y/n" if default else "y/N"
+    answer = input(f"{prompt} [{hint}]: ").strip().lower()
+    if not answer:
+        return default
+    return answer in ("y", "yes")
+
+
+def first_run_setup() -> None:
+    print("tegem: no TELEGRAM_BOT_TOKEN found — first-run setup.\n")
+
+    # 1) Bot token
+    token = ""
+    while not token:
+        token = getpass.getpass("Enter Telegram bot token (from @BotFather, hidden): ").strip()
+        if not token:
+            print("Token is required. Get one from @BotFather (https://t.me/BotFather).")
+
+    # 2) Optionally verify the token works via getMe
+    verify = ask_bool("Verify token with Telegram (getMe)?", default=True)
+    if verify:
+        try:
+            import urllib.request, json
+            with urllib.request.urlopen(
+                f"https://api.telegram.org/bot{token}/getMe", timeout=10
+            ) as r:
+                data = json.loads(r.read())
+            if data.get("ok"):
+                print(f"Token OK — bot @ {data['result'].get('username')} ({data['result'].get('first_name')})")
+            else:
+                print(f"Telegram said: {data.get('description', 'token rejected')}")
+                if not ask_bool("Save the token anyway?"):
+                    sys.exit(1)
+        except Exception as exc:
+            print(f"Could not verify (no network?): {exc}")
+            if not ask_bool("Save the token anyway?"):
+                sys.exit(1)
+
+    # 3) Allowed user id (optional)
+    allow = ask_bool("Restrict the bot to specific user id(s)? (recommended)")
+    allowed_ids = ""
+    if allow:
+        print(f"Find your id by messaging @userinfobot, or send /start after the bot is up.")
+        allowed_ids = input("Allowed user id(s), comma-separated: ").strip()
+        while allowed_ids and not all(
+            part.strip().isdigit() for part in allowed_ids.split(",") if part.strip()
+        ):
+            print("Ids must be numeric, comma-separated.")
+            allowed_ids = input("Allowed user id(s), comma-separated: ").strip()
+
+    # Write/merge .env (never overwrite an existing secret with blank values)
+    existing = {}
+    if os.path.exists(ENV_FILE):
+        with open(ENV_FILE) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, _, v = line.partition("=")
+                    existing[k.strip()] = v.strip()
+
+    if not existing.get("GEMINI_COMMAND"):
+        existing["GEMINI_COMMAND"] = "gemini"
+    existing["TELEGRAM_BOT_TOKEN"] = token
+    if allowed_ids:
+        existing["TELEGRAM_ALLOWED_USER_IDS"] = allowed_ids
+
+    os.makedirs(REPO, exist_ok=True)
+    with open(ENV_FILE, "w") as f:
+        for key in (
+            "TELEGRAM_BOT_TOKEN", "TELEGRAM_ALLOWED_USER_IDS",
+            "GEMINI_COMMAND", "GEMINI_MODEL", "GEMINI_TIMEOUT",
+            "GEMINI_EXTRA_ARGS",
+        ):
+            if key in existing:
+                f.write(f"{key}={existing[key]}\n")
+        f.write(
+            "# Optional: extra args, e.g. --skip-trust on Termux\n"
+            "# GEMINI_EXTRA_ARGS=\n"
+        )
+    os.chmod(ENV_FILE, 0o600)
+    print(f"Saved config to {ENV_FILE} (chmod 600).")
+
+
+# On Termux a running instance holds the getUpdates long-poll loop; a
+# second one triggers Telegram 409 Conflict. Prevent that with a lock.
+LOCK_FILE = "/data/data/com.termux/files/usr/tmp/tegem.lock"
+PID_FILE = "/data/data/com.termux/files/usr/tmp/tegem.pid"
+import atexit
+import fcntl
+
+_lock_handle = None
+
+def acquire_lock() -> None:
+    global _lock_handle
+    os.makedirs(os.path.dirname(LOCK_FILE), exist_ok=True)
+    _lock_handle = open(LOCK_FILE, "w")
+    try:
+        fcntl.flock(_lock_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        holder = "unknown"
+        try:
+            with open(PID_FILE) as f:
+                holder = f.read().strip() or "unknown"
+        except OSError:
+            pass
+        print(f"ERROR: tegem is already running (lock: {LOCK_FILE}, holder pid: {holder}).\n"
+              f"Stop it first: kill {holder}  (or: pkill -f 'usr/bin/tegem'), then retry.",
+              file=sys.stderr)
+        sys.exit(1)
+    _lock_handle.write(str(os.getpid()))
+    _lock_handle.flush()
+    with open(PID_FILE, "w") as f:
+        f.write(str(os.getpid()))
+    atexit.register(_release_lock)
+
+def _release_lock() -> None:
+    if _lock_handle:
+        try:
+            fcntl.flock(_lock_handle, fcntl.LOCK_UN)
+            _lock_handle.close()
+        except OSError:
+            pass
+        try:
+            os.remove(LOCK_FILE)
+            os.remove(PID_FILE)
+        except OSError:
+            pass
+
+
+def main() -> None:
+    acquire_lock()
+
+    os.chdir(REPO)
+    os.environ.setdefault("PYTHONPATH", REPO)
+    load_env()
+
+    if not os.environ.get("TELEGRAM_BOT_TOKEN"):
+        if not sys.stdin.isatty():
+            print(
+                f"ERROR: TELEGRAM_BOT_TOKEN is not set and no interactive "
+                f"terminal is available (nohup / background).\n"
+                f"Create {ENV_FILE} with your token first, e.g.:\n"
+                f"    cp {TEMPLATE} {ENV_FILE} && nano {ENV_FILE}\n"
+                f"then run `tegem` in a terminal, or:\n"
+                f"    export TELEGRAM_BOT_TOKEN=... && tegem",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        first_run_setup()
+        load_env()
+        if not os.environ.get("TELEGRAM_BOT_TOKEN"):
+            sys.exit(1)
+
+
+    sys.path.insert(0, REPO)
+    from src.main import main as bot_main
+    bot_main()
+
+
+if __name__ == "__main__":
+    main()
