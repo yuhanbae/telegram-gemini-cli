@@ -46,6 +46,7 @@ SPEED_WALLET_INVOICE = (
 PAYPAL_ME_URL = "https://www.paypal.com/paypalme/yuhanbae"
 
 SESSION_KEY = "gemini_session"
+SESSION_MAT_KEY = "gemini_session_materialized"
 
 
 def donate_keyboard() -> InlineKeyboardMarkup:
@@ -131,8 +132,8 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"• Gemini CLI: `{GEMINI_COMMAND}`",
         f"• Model: {model}",
         f"• Timeout: {GEMINI_TIMEOUT}s",
-        f"• This chat's session: `{session}`" if session else
-        "• This chat's session: none yet (fresh start)",
+        (f"• This chat's session: `{gemini_cli.clean_session_id(session)}`"
+         if session else "• This chat's session: none yet (fresh start)"),
     ]
     await update.message.reply_text("\n".join(lines))
 
@@ -142,6 +143,7 @@ async def new(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     session = gemini_cli.new_session_id()
     context.chat_data[SESSION_KEY] = session
+    context.chat_data[SESSION_MAT_KEY] = False
     await update.message.reply_text(
         f"🆕 Fresh session started.\n"
         f"Session ID: `{session}`\n"
@@ -167,10 +169,19 @@ async def resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
 
+    # /new and lazy-created UUIDs are NOT materialized yet.
+    # Resuming the chat's *current* mapped session (no arg) inherits its
+    # materialization state; an explicit arg (uuid or index) is treated as
+    # materialized only if it matches a known-mapped session, else False
+    # (the safe call will self-heal either way).
+    materialized = False
+    if not arg:
+        materialized = bool(context.chat_data.get(SESSION_MAT_KEY, False))
     context.chat_data[SESSION_KEY] = session
+    context.chat_data[SESSION_MAT_KEY] = materialized
     await update.message.reply_text(
-        f"🔄 This chat now maps to session `{session}`.\n"
-        "The next message will be resumed with --resume.",
+        f"🔄 This chat now maps to session `{gemini_cli.clean_session_id(session)}`.\n"
+        "The next message will resume it (or create it if it is new).",
     )
 
 
@@ -195,10 +206,12 @@ async def message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     session = context.chat_data.get(SESSION_KEY)
+    materialized = bool(context.chat_data.get(SESSION_MAT_KEY, False))
     if not session:
         # First message of the chat: lazily create a UUID so multi-turn
         # context works for all following messages.
         session = gemini_cli.new_session_id()
+        materialized = False
         context.chat_data[SESSION_KEY] = session
 
     await update.message.chat.send_action(ChatAction.TYPING)
@@ -206,11 +219,12 @@ async def message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 update.effective_chat.id, session, prompt[:80])
 
     try:
-        answer, session = await gemini_cli.ask_gemini_safe(
-            prompt, session_id=session,
+        answer, session, materialized = await gemini_cli.ask_gemini_safe(
+            prompt, session_id=session, materialized=materialized,
         )
-        # The session may have been (re)created; keep chat_data in sync.
+        # Keep chat_data in sync with the (possibly re-created) session.
         context.chat_data[SESSION_KEY] = session
+        context.chat_data[SESSION_MAT_KEY] = materialized
     except RuntimeError as exc:
         logger.error("gemini run failed: %s", exc)
         await update.message.reply_text(f"❌ {exc}")
