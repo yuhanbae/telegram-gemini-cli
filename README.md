@@ -4,7 +4,8 @@ A lightweight, Termux-friendly Telegram wrapper around the **local [Gemini CLI](
 Send a message in Telegram and it is passed to `gemini` on your device;
 the answer is sent back, chunked to fit Telegram's limits.
 
-[![Donate](https://img.shields.io/badge/Donate-PayPal-green)](https://www.paypal.com/donate/?business=yuhanbae%40gmail.com&currency_code=USD)
+[![⚡ Buy Me a Coffee — Speed Wallet (Lightning)](https://img.shields.io/badge/⚡%20Buy%20Me%20a%20Coffee-Speed%20Wallet%20%28Lightning%29-lightningblue)
+](#donations)
 
 ## Architecture
 
@@ -95,17 +96,18 @@ giving you multi-turn context per chat.
 
 ## Donations
 
-If this project helps you, consider a donation:
+☕ **Buy Me a Coffee — Speed Wallet (Lightning):**
 
-[![Donate on PayPal](https://img.shields.io/badge/Donate-PayPal-blue)](https://www.paypal.com/donate/?business=yuhanbae%40gmail.com&currency_code=USD)
+The bot's `/donate`, `/start` and `/help` menus show a
+**⚡ Buy Me a Coffee (Speed Wallet)** button — a static Lightning invoice
+(`lightning:lnbc...`). Open it in any Lightning wallet app (Speed Wallet,
+Phoenix, Alby, Bitcoin Core …) by tapping the button in Telegram.
 
-⚡ **Speed Wallet (Lightning):** the bot's /donate and /start menus include a
-Pay-with-Speed-Wallet button using a Lightning invoice (lnbc...). Open it in
-any Lightning wallet app that supports the `lightning:` URI scheme.
+(We previously linked PayPal, but PayPal does not support donations in this
+region, so the Speed Wallet invoice is the primary donation route.)
 
-Note: `.github/FUNDING.yml` only supports a fixed set of platforms (PayPal is
-there as a custom URL) — Lightning invoices can't be added there, so they live
-in the bot UI + this section.
+Note: `.github/FUNDING.yml` only supports a fixed set of platforms and cannot
+carry a `lightning:` URI, so it points to this page instead.
 
 ## Troubleshooting
 

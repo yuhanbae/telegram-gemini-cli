@@ -1,2 +1,5 @@
+# Donation via Speed Wallet (Lightning invoice).
+# GitHub's FUNDING.yml "custom" field does not support lightning: URIs,
+# so we point at a landing page / the bot's donate menu instead.
 custom:
-  - https://www.paypal.com/donate/?business=yuhanbae%40gmail.com&currency_code=USD
+  - https://github.com/yuhanbae/telegram-gemini-cli#donations

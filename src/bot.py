@@ -34,9 +34,10 @@ logger = logging.getLogger(__name__)
 
 CHUNK_SIZE = 4000  # below Telegram's 4096-char message limit
 
-DONATE_URL = (
-    "https://www.paypal.com/donate/"
-    "?business=yuhanbae%40gmail.com&currency_code=USD"
+SPEED_WALLET_INVOICE = (
+    "lightning:lnbc1p426acmpp5ga2jqrl7glrl3s9s680r3t2lucnc8zrgnpzy200hxpp7hrsa99"
+    "pqdqqcqzzsxqyz5vqsp5h34eyqhnsemqjwlrqv86j9x7mst2jm0vjnmqwgpxgtya3ntaumqs9qxpqysgqpxuc"
+    "wqklhnjpgv3rlrf59z35w7jrpqvhkdcksa40qad9nuedc2hhpxtyvay08atw00ujv7ehqf7ee2r57wulqwlzrfj038rl2h8nd8gp4l0q3y"
 )
 
 # Speed Wallet (Lightning) invoice — static, provided by the project owner.
@@ -53,8 +54,10 @@ SESSION_KEY = "gemini_session"
 def donate_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [[
-            InlineKeyboardButton("☕ Donate / Buy Me a Coffee", url=DONATE_URL),
-            InlineKeyboardButton("⚡ Pay with Speed Wallet", url=SPEED_WALLET_INVOICE),
+            InlineKeyboardButton(
+                "⚡ Buy Me a Coffee (Speed Wallet)",
+                url=SPEED_WALLET_INVOICE,
+            ),
         ]]
     )
 
@@ -84,7 +87,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/resume <uuid|index> — switch to an existing Gemini CLI session\n"
         "/sessions — list sessions saved for this project directory\n"
         "/status — show wrapper + session state\n"
-        "/donate — support the project ☕\n\n"
+        "/donate — support the project ⚡\n\n"
         "Plain text messages are answered by Gemini CLI in your "
         "current working directory.",
         reply_markup=donate_keyboard(),
@@ -95,7 +98,9 @@ async def donate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _allowed(update):
         return
     await update.message.reply_text(
-        "Thanks for your support! ☕",
+        "Thanks for your support! ⚡\n"
+        "Open the button in any Lightning wallet\n"
+        "(Speed Wallet, Bitcoin Core, Phoenix, Alby …).",
         reply_markup=donate_keyboard(),
     )
 
